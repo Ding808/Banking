@@ -67,6 +67,8 @@ struct FirstView: View {
                                     }
                                 }
                             }
+                            // Dismiss the keyboard after the action is complete
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                         }) {
                             Text("Enter")
                                 .font(.headline)
@@ -118,6 +120,66 @@ struct FirstView: View {
                                     )
                                 }
                                 .rotationEffect(.degrees(animateChart ? 0 : -180))
+                                GeometryReader { geometry in
+                                    Color.clear
+                                        .contentShape(Rectangle())
+                                        .gesture(
+                                            DragGesture(minimumDistance: 0)
+                                                .onChanged { value in
+                                                    guard !isDetailLocked else { return }
+                                                    let touchLocation = value.location
+                                                    self.touchLocation = touchLocation
+                                                    let center = CGPoint(
+                                                        x: geometry.size.width / 2,
+                                                        y: geometry.size.height / 2
+                                                    )
+                                                    let touchAngle = angleFromPoint(center: center, point: touchLocation)
+                                                    let totalRevenue = products.map(\.revenue).reduce(0, +)
+                                                    var currentAngle: Double = 0
+
+                                                    for product in products {
+                                                        let productAngle = 360 * (product.revenue / totalRevenue)
+                                                        if touchAngle >= currentAngle && touchAngle <= currentAngle + productAngle {
+                                                            selectedProduct = product
+                                                            break
+                                                        }
+                                                        currentAngle += productAngle
+                                                    }
+                                                }.onEnded { _ in
+                                                    if !isDetailLocked {
+                                                        selectedProduct = nil
+                                                    }
+                                                }
+                                        )
+                                        .simultaneousGesture(
+                                            TapGesture(count: 2)
+                                                .onEnded {
+                                                    isDetailLocked.toggle()
+                                                }
+                                        )
+                                }
+                            
+                            if let selectedProduct = selectedProduct, let touchLocation = touchLocation {
+                                    VStack {
+                                        Text("\(selectedProduct.title)")
+                                            .font(.headline)
+                                            .padding(4)
+                                        Text("Revenue: \(selectedProduct.revenue * 100, specifier: "%.1f")%")
+                                            .font(.subheadline)
+                                            .padding(4)
+                                    }
+                                    .background(Color.white)
+                                    .cornerRadius(8)
+                                    .shadow(radius: 5)
+                                    .position(x: touchLocation.x, y: touchLocation.y - 50)
+                                    .animation(.easeInOut)
+                                }
+                            }
+                            .onAppear {
+                                // Trigger the animation after the view appears
+                                withAnimation(.easeInOut(duration: 1.5)) {
+                                    animateChart = true
+                                }
                             }
                             .onAppear {
                                 // Fetch Ethereum balance and ETH to USDT rate immediately on view appear
@@ -226,25 +288,22 @@ struct FirstView: View {
         }
     }
 
-    // Function to fetch ETH to USDT rate using CoinMarketCap API
-   
-
     // Start timer to refresh rate every 5 seconds
     private func startTimer() {
-            timer?.invalidate()  // Invalidate any existing timer
-            timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
-                fetchEthToUsdtRate { rate in
-                    if let rate = rate {
-                        ethToUsdtRate = rate
-                        usdtBalance = ethereumBalance * rate
-                    }
+        timer?.invalidate()  // Invalidate any existing timer
+        timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
+            fetchEthToUsdtRate { rate in
+                if let rate = rate {
+                    ethToUsdtRate = rate
+                    usdtBalance = ethereumBalance * rate
                 }
             }
         }
+    }
 
-        // Stop the timer if needed (e.g., on view disappear)
-        private func stopTimer() {
-            timer?.invalidate()
-            timer = nil
-        }
+    // Stop the timer if needed (e.g., on view disappear)
+    private func stopTimer() {
+        timer?.invalidate()
+        timer = nil
+    }
 }
